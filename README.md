@@ -1,2 +1,0 @@
-# Virksomhed
-Virksomhedsberegner
