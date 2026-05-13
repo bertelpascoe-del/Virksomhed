@@ -1,3 +1,0 @@
-import React,{useState}from'react';
-const FileUploader=({onAnalyze})=>{const[files,setFiles]=useState([]);return <div className="bg-white p-6 rounded-xl shadow-lg"><h2 className="text-2xl font-bold mb-4">Upload Documents</h2><input type="file" multiple accept=".csv,.xlsx,.xls" onChange={e=>setFiles([...files,...Array.from(e.target.files)])} className="block w-full text-sm"/><ul className="my-4 text-sm">{files.map(f=><li key={f.name}>{f.name}</li>)}</ul><button onClick={()=>onAnalyze(files)} disabled={!files.length} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-lg disabled:opacity-50">Analyze Financial Health</button></div>};
-export default FileUploader;
