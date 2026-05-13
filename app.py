@@ -75,31 +75,31 @@ if uploaded_files:
 
                     st.markdown("---")
 
-                    st.subheading("📈 Finansiel opsummering")
+                    st.subheader("📈 Finansiel opsummering")
                     st.write(summary)
 
                     st.markdown("---")
 
                     col1, col2 = st.columns(2)
                     with col1:
-                        st.subheading("✅ Styrker")
+                        st.subheader("✅ Styrker")
                         for strength in recommendations.get("strengths", []):
                             st.write(f"• {strength}")
 
                     with col2:
-                        st.subheading("⚠️ Svagheder & Risici")
+                        st.subheader("⚠️ Svagheder & Risici")
                         for weakness in recommendations.get("weaknesses", []):
                             st.write(f"• {weakness}")
 
                     st.markdown("---")
 
-                    st.subheading("💡 Anbefalinger")
+                    st.subheader("💡 Anbefalinger")
                     for i, rec in enumerate(recommendations.get("recommendations", []), 1):
                         st.write(f"{i}. {rec}")
 
                     st.markdown("---")
 
-                    st.subheading("📊 Nøgletal")
+                    st.subheader("📊 Nøgletal")
                     metrics_cols = st.columns(3)
                     metric_items = [
                         ("Profit Margin", f"{metrics.get('profit_margin', 0):.1f}%"),
@@ -116,7 +116,7 @@ if uploaded_files:
 
                     st.markdown("---")
 
-                    st.subheading("📉 Grafer")
+                    st.subheader("📉 Grafer")
 
                     col_chart1, col_chart2 = st.columns(2)
 
@@ -156,7 +156,7 @@ if uploaded_files:
                     score_over_time = fa.parse_score_over_time(temp_paths)
                     if score_over_time and len(score_over_time) > 1:
                         st.markdown("---")
-                        st.subheading("📈 Score over tid")
+                        st.subheader("📈 Score over tid")
                         fig_line = px.line(
                             x=list(range(len(score_over_time))),
                             y=score_over_time,
