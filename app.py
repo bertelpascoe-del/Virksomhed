@@ -1,8 +1,8 @@
 import os
-import tempfile
-import streamlit as st
-import pandas as pd
-from backend.financial_analyzer import (
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+
+from financial_analyzer import (
     parse_documents,
     calculate_metrics,
     calculate_score_and_explanation,
@@ -10,109 +10,78 @@ from backend.financial_analyzer import (
     parse_score_over_time,
 )
 
-st.set_page_config(
-    page_title="SMB Financial Health Analyzer",
-    page_icon="📊",
-    layout="wide",
-)
+app = Flask(__name__)
+CORS(app, resources={r"/api/*": {"origins": "http://localhost:5173"}})
 
-st.title("SMB Financial Health Analyzer")
-st.markdown(
-    "Upload CSV, XLSX or XLS financial reports and get a quick assessment of profitability, liquidity, debt, and cash flow health."
-)
+TEMP_DIR = "temp_uploads"
 
-uploaded_files = st.file_uploader(
-    "Upload financial documents",
-    type=["csv", "xlsx", "xls"],
-    accept_multiple_files=True,
-)
 
-if uploaded_files:
-    if st.button("Analyze uploaded files"):
-        with st.spinner("Analyzing files..."):
-            with tempfile.TemporaryDirectory() as temp_dir:
-                file_paths = []
+@app.before_request
+def before_request():
+    os.makedirs(TEMP_DIR, exist_ok=True)
 
-                for uploaded_file in uploaded_files:
-                    out_path = os.path.join(temp_dir, uploaded_file.name)
-                    with open(out_path, "wb") as f:
-                        f.write(uploaded_file.getbuffer())
-                    file_paths.append(out_path)
 
-                data, parse_warnings = parse_documents(file_paths)
+@app.teardown_request
+def teardown_request(exception=None):
+    if os.path.exists(TEMP_DIR):
+        for name in os.listdir(TEMP_DIR):
+            path = os.path.join(TEMP_DIR, name)
+            if os.path.isfile(path):
+                os.remove(path)
 
-                if data is None:
-                    st.error("Could not parse financial data from the uploaded files.")
-                    if parse_warnings:
-                        st.warning("\n".join(parse_warnings))
-                else:
-                    metrics, calc_warnings = calculate_metrics(data)
-                    score, details, _ = calculate_score_and_explanation(metrics)
-                    summary, strengths, weaknesses, recommendations = generate_summary_and_recs(
-                        metrics, parse_warnings
-                    )
-                    score_over_time = parse_score_over_time(file_paths)
 
-                    col1, col2, col3 = st.columns(3)
-                    col1.metric("Financial Health Score", score, details["description"])
-                    col2.metric("Revenue", f"{data.get('Revenue', 0):,.0f} DKK")
-                    col3.metric("Net Profit", f"{metrics.get('NetProfit', 0):,.0f} DKK")
+@app.route("/api/analyze", methods=["POST"])
+def analyze_files():
+    if "files" not in request.files:
+        return jsonify({"error": "No files provided."}), 400
 
-                    st.markdown("### Summary")
-                    st.write(summary)
+    paths = []
 
-                    st.markdown("### Key Ratios")
-                    ratio_df = {
-                        "Metric": [
-                            "Gross Profit",
-                            "Gross Margin (%)",
-                            "Net Profit",
-                            "Net Margin (%)",
-                            "Expense Ratio (%)",
-                            "Debt to Revenue (%)",
-                            "Current Ratio",
-                            "Cash Flow Margin (%)",
-                        ],
-                        "Value": [
-                            f"{metrics.get('GrossProfit', 0):,.0f}",
-                            f"{metrics.get('GrossMarginPct', 0):.1f}%",
-                            f"{metrics.get('NetProfit', 0):,.0f}",
-                            f"{metrics.get('NetMarginPct', 0):.1f}%",
-                            f"{metrics.get('ExpenseRatioPct', 0):.1f}%",
-                            f"{metrics.get('DebtToRevenueRatioPct', 0):.1f}%",
-                            f"{metrics.get('CurrentRatio', 0):.2f}",
-                            f"{metrics.get('CashFlowMarginPct', 0):.1f}%",
-                        ],
-                    }
-                    st.table(ratio_df)
+    for file in request.files.getlist("files"):
+        path = os.path.join(TEMP_DIR, file.filename)
+        file.save(path)
+        paths.append(path)
 
-                    st.markdown("### Strengths")
-                    for item in strengths:
-                        st.success(item)
+    data, warnings = parse_documents(paths)
 
-                    st.markdown("### Weaknesses")
-                    for item in weaknesses:
-                        st.error(item)
+    if data is None:
+        return jsonify({
+            "error": "Could not parse financial data from the uploaded files."
+        }), 400
 
-                    st.markdown("### Recommendations")
-                    for rec in recommendations:
-                        st.write(f"**{rec['title']}**: {rec['text']}")
+    metrics, calc_warnings = calculate_metrics(data)
 
-                    if parse_warnings or calc_warnings:
-                        st.markdown("### Warnings")
-                        for warning in parse_warnings + calc_warnings:
-                            st.warning(warning)
+    score, details, _ = calculate_score_and_explanation(metrics)
 
-                    if score_over_time:
-                        st.markdown("### Score Trend Over Time")
-                        trend_df = pd.DataFrame(
-                            {
-                                "Score": [row["score"] for row in score_over_time],
-                            },
-                            index=[row["period"] for row in score_over_time],
-                        )
-                        st.line_chart(trend_df)
-                        st.write("Showing score development by detected period from the uploaded files.")
+    summary, strengths, weaknesses, recommendations = generate_summary_and_recs(
+        metrics,
+        warnings
+    )
 
-else:
-    st.info("Upload one or more CSV/XLSX/XLS files to begin analysis.")
+    score_over_time = parse_score_over_time(paths)
+
+    return jsonify({
+        "score": score,
+        "description": details["description"],
+        "metrics": metrics,
+        "raw_metrics": {
+            "revenue": data.get("Revenue", 0),
+            "cogs": data.get("COGS", 0),
+            "expenses": data.get("Expenses", 0),
+            "debt": data.get("Debt", 0),
+            "assets": data.get("Assets", 0),
+            "liabilities": data.get("Liabilities", 0),
+            "cashflow": data.get("CashFlow", 0),
+        },
+        "warnings": warnings + calc_warnings,
+        "summary": summary,
+        "strengths": strengths,
+        "weaknesses": weaknesses,
+        "recommendations": recommendations,
+        "score_over_time": score_over_time,
+    })
+
+
+if __name__ == "__main__":
+    print("Starting Flask backend on http://localhost:5000")
+    app.run(debug=True, port=5000)
